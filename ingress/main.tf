@@ -1,13 +1,21 @@
 /*
   Ingress controller, taken from https://docs.aws.amazon.com/eks/latest/userguide/alb-ingress.html
 */
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+      version = "1.13.3"
+    }
+  }
+}
 
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.cluster.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token
   load_config_file       = false
-  version                = "~> 1.10"
+  # version                = "~> 1.10"
 }
 
 data "aws_eks_cluster" "cluster" {
@@ -21,7 +29,7 @@ data "aws_eks_cluster_auth" "cluster" {
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_policy" "ALBIngressControllerIAMPolicy" {
-  name   = "ALBIngressControllerIAMPolicy"
+  name   = "${var.name}-${var.environment}-ALBIngressControllerIAMPolicy"
   policy = <<POLICY
 {
   "Version": "2012-10-17",
@@ -145,7 +153,7 @@ POLICY
 }
 
 resource "aws_iam_role" "eks_alb_ingress_controller" {
-  name        = "eks-alb-ingress-controller"
+  name        = "${var.name}-${var.environment}-eks-alb-ingress-controller"
   description = "Permissions required by the Kubernetes AWS ALB Ingress controller to do it's job."
 
   force_detach_policies = true
