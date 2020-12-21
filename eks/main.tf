@@ -16,10 +16,6 @@ terraform {
       source = "hashicorp/external"
       version = "2.0.0"
     }
-    kubernetes = {
-      source = "hashicorp/kubernetes"
-      version = "1.13.3"
-    }
   }
 }
 provider "tls" {
@@ -27,15 +23,15 @@ provider "tls" {
 }
 
 provider "local" {
-  # version = "2.0.0"
+  version = "2.0.0"
 }
 
 provider "template" {
-  # version = "2.2.0"
+  version = "2.2.0"
 }
 
 provider "external" {
-  # version = "2.0.0"
+  version = "2.0.0"
 }
 
 provider "kubernetes" {
@@ -43,7 +39,7 @@ provider "kubernetes" {
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token
   load_config_file       = false
-  # version                = "~> 1.10"
+  version                = "~> 1.10"
 }
 
 data "aws_eks_cluster" "cluster" {
@@ -54,26 +50,26 @@ data "aws_eks_cluster_auth" "cluster" {
   name = aws_eks_cluster.main.id
 }
 
-# resource "aws_iam_policy" "AmazonEKSClusterCloudWatchMetricsPolicy" {
-#   name   = "AmazonEKSClusterCloudWatchMetricsPolicy"
-#   policy = <<EOF
-# {
-#     "Version": "2012-10-17",
-#     "Statement": [
-#         {
-#             "Action": [
-#                 "cloudwatch:PutMetricData"
-#             ],
-#             "Resource": "*",
-#             "Effect": "Allow"
-#         }
-#     ]
-# }
-# EOF
-# }
+resource "aws_iam_policy" "AmazonEKSClusterCloudWatchMetricsPolicy" {
+  name   = "AmazonEKSClusterCloudWatchMetricsPolicy"
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "cloudwatch:PutMetricData"
+            ],
+            "Resource": "*",
+            "Effect": "Allow"
+        }
+    ]
+}
+EOF
+}
 
 resource "aws_iam_policy" "AmazonEKSClusterNLBPolicy" {
-  name   = "${var.name}-${var.environment}-AmazonEKSClusterNLBPolicy"
+  name   = "AmazonEKSClusterNLBPolicy"
   policy = <<EOF
 {
     "Version": "2012-10-17",
@@ -93,7 +89,7 @@ EOF
 }
 
 resource "aws_iam_role" "eks_cluster_role" {
-  name                  = "${var.name}-${var.environment}-eks-cluster-role"
+  name                  = "${var.name}-eks-cluster-role"
   force_detach_policies = true
 
   assume_role_policy = <<POLICY
@@ -158,8 +154,7 @@ resource "aws_eks_cluster" "main" {
   }
 
   timeouts {
-    # delete = "30m"
-    delete = "15m"
+    delete = "30m"
   }
 
   depends_on = [
@@ -326,7 +321,6 @@ resource "local_file" "kubeconfig" {
   filename = pathexpand("${var.kubeconfig_path}/config")
 }
 
-# # Patching CoreDNS annotations with fargate instead of EC2 in the Annotations 
 # resource "null_resource" "coredns_patch" {
 #   provisioner "local-exec" {
 #     interpreter = ["/bin/bash", "-c"]
@@ -336,7 +330,7 @@ resource "local_file" "kubeconfig" {
 #   }
 # }
 
-# # Patching CoreDNS annotations by deleteing the AWS Compute Type totally 
+# Patching CoreDNS annotations by deleteing the AWS Compute Type totally 
 resource "null_resource" "coredns_patch" {
   provisioner "local-exec" {
     interpreter = ["/bin/bash", "-c"]

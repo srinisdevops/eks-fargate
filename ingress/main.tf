@@ -1,21 +1,13 @@
 /*
   Ingress controller, taken from https://docs.aws.amazon.com/eks/latest/userguide/alb-ingress.html
 */
-terraform {
-  required_providers {
-    kubernetes = {
-      source = "hashicorp/kubernetes"
-      version = "1.13.3"
-    }
-  }
-}
 
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.cluster.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token
   load_config_file       = false
-  # version                = "~> 1.10"
+  version                = "~> 1.10"
 }
 
 data "aws_eks_cluster" "cluster" {
@@ -29,7 +21,7 @@ data "aws_eks_cluster_auth" "cluster" {
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_policy" "ALBIngressControllerIAMPolicy" {
-  name   = "${var.name}-${var.environment}-ALBIngressControllerIAMPolicy"
+  name   = "ALBIngressControllerIAMPolicy"
   policy = <<POLICY
 {
   "Version": "2012-10-17",
@@ -153,7 +145,7 @@ POLICY
 }
 
 resource "aws_iam_role" "eks_alb_ingress_controller" {
-  name        = "${var.name}-${var.environment}-eks-alb-ingress-controller"
+  name        = "eks-alb-ingress-controller"
   description = "Permissions required by the Kubernetes AWS ALB Ingress controller to do it's job."
 
   force_detach_policies = true
@@ -338,4 +330,105 @@ resource "kubernetes_deployment" "ingress" {
   }
 
   depends_on = [kubernetes_cluster_role_binding.ingress]
+}
+
+
+data "template_file" "kubeconfig" {
+  template = <<EOF
+apiVersion: v1
+kind: Config
+current-context: ${data.aws_eks_cluster.cluster.id}
+clusters:
+- name: ${data.aws_eks_cluster.cluster.id}
+  cluster:
+    certificate-authority-data: ${data.aws_eks_cluster.cluster.certificate_authority.0.data}
+    server: ${data.aws_eks_cluster.cluster.endpoint}
+contexts:
+- name: ${data.aws_eks_cluster.cluster.id}
+  context:
+    cluster: ${data.aws_eks_cluster.cluster.id}
+    user: ${data.aws_eks_cluster.cluster.id}
+users:
+- name: ${data.aws_eks_cluster.cluster.id}
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1alpha1
+      args:
+      - --region
+      - us-east-1
+      - eks
+      - get-token
+      - --cluster-name
+      - ${data.aws_eks_cluster.cluster.id}
+      command: aws
+EOF
+
+  vars = {
+#    kubeconfig_name           = "eks_${aws_eks_cluster.main.name}"
+#    clustername               = aws_eks_cluster.main.name
+    endpoint                  = data.aws_eks_cluster.cluster.endpoint
+    cluster_auth_base64       = data.aws_eks_cluster.cluster.certificate_authority[0].data
+  }
+depends_on = [kubernetes_cluster_role_binding.ingress]
+
+}
+
+# data "template_file" "kubeconfig" {
+#   template = file("${path.module}/templates/kubeconfig.tpl")
+
+#   vars = {
+#     kubeconfig_name           = "eks_${aws_eks_cluster.main.name}"
+#     clustername               = aws_eks_cluster.main.name
+#     endpoint                  = data.aws_eks_cluster.cluster.endpoint
+#     cluster_auth_base64       = data.aws_eks_cluster.cluster.certificate_authority[0].data
+#   }
+# }
+
+# resource "local_file" "kubeconfig" {
+#   content  = data.template_file.kubeconfig.rendered
+#   filename = pathexpand("${var.kubeconfig_path}/config")
+# }
+
+# Patching CoreDNS annotations with fargate instead of EC2 in the Annotations 
+# resource "null_resource" "coredns_patch" {
+#   provisioner "local-exec" {
+#     interpreter = ["/bin/bash", "-c"]
+#     command     = <<EOF
+# kubectl --kubeconfig=<(echo '${data.template_file.kubeconfig.rendered}') patch deployment coredns --namespace kube-system --type=json -p='[{"op": "replace", "path": "/spec/template/metadata/annotations/eks.amazonaws.com~1compute-type", "value": "fargate"}]'
+# EOF
+#   }
+# depends_on = [kubernetes_cluster_role_binding.ingress]
+# }
+
+# Patching CoreDNS annotations by deleteing the AWS Compute Type totally 
+resource "null_resource" "coredns_patch" {
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<EOF
+kubectl --kubeconfig=<(echo '${data.template_file.kubeconfig.rendered}') patch deployment coredns --namespace kube-system --type=json -p='[{"op": "remove", "path": "/spec/template/metadata/annotations", "value": "eks.amazonaws.com/compute-type"}]'
+EOF
+  }
+  depends_on = [kubernetes_deployment.ingress]
+}
+
+# # Patching CoreDNS annotations by deleteing the AWS Compute Type totally 
+resource "null_resource" "coredns_patch1" {
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<EOF
+kubectl --kubeconfig=<(echo '${data.template_file.kubeconfig.rendered}') rollout restart -n kube-system deployment coredns
+EOF
+  }
+  depends_on = [null_resource.coredns_patch1]
+}
+
+# # Patching CoreDNS annotations by deleteing the AWS Compute Type totally 
+resource "null_resource" "coredns_patch2" {
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<EOF
+kubectl --kubeconfig=<(echo '${data.template_file.kubeconfig.rendered}') rollout restart -n kube-system deployment alb-ingress-controller
+EOF
+  }
+  depends_on = [null_resource.coredns_patch2]
 }

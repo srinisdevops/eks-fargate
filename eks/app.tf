@@ -10,7 +10,7 @@ resource "aws_iam_role_policy_attachment" "AmazonEKSFargatePodExecutionRolePolic
 }
 
 resource "aws_iam_role" "fargate_pod_execution_role" {
-  name                  = "${var.name}-${var.environment}-eks-fargate-pod-execution-role"
+  name                  = "${var.name}-eks-fargate-pod-execution-role"
   force_detach_policies = true
 
   assume_role_policy = <<POLICY
@@ -34,21 +34,16 @@ POLICY
 
 resource "aws_eks_fargate_profile" "main" {
   cluster_name           = aws_eks_cluster.main.name
-  fargate_profile_name   = "${var.name}-${var.environment}-fp-default"
+  fargate_profile_name   = "fp-default"
   pod_execution_role_arn = aws_iam_role.fargate_pod_execution_role.arn
   subnet_ids             = var.private_subnets.*.id
 
-  # # Added kube-system namespace and removed default
-  # selector {
-  #   namespace = "default"
-  # }
-
   selector {
-    namespace = "${var.name}-${var.environment}-2048-game"
+    namespace = "default"
   }
 
   selector {
-    namespace = "kube-system"
+    namespace = "2048-game"
   }
 
   timeouts {
@@ -63,14 +58,14 @@ resource "kubernetes_namespace" "example" {
       app = "2048"
     }
 
-    name = "${var.name}-${var.environment}-2048-game"
+    name = "2048-game"
   }
 }
 
 resource "kubernetes_deployment" "app" {
   metadata {
     name      = "deployment-2048"
-    namespace = "${var.name}-${var.environment}-2048-game"
+    namespace = "2048-game"
     labels    = {
       app = "2048"
     }
@@ -111,7 +106,7 @@ resource "kubernetes_deployment" "app" {
 resource "kubernetes_service" "app" {
   metadata {
     name      = "service-2048"
-    namespace = "${var.name}-${var.environment}-2048-game"
+    namespace = "2048-game"
   }
   spec {
     selector = {
@@ -133,7 +128,7 @@ resource "kubernetes_service" "app" {
 resource "kubernetes_ingress" "app" {
   metadata {
     name      = "2048-ingress"
-    namespace = "${var.name}-${var.environment}-2048-game"
+    namespace = "2048-game"
     annotations = {
       "kubernetes.io/ingress.class"           = "alb"
       "alb.ingress.kubernetes.io/scheme"      = "internet-facing"
